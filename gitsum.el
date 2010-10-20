@@ -49,6 +49,57 @@ This mode is meant to be activated by `M-x gitsum' or pressing `s' in git-status
 (when (boundp 'git-status-mode-map)
   (define-key git-status-mode-map "s" 'gitsum-switch-from-git-status))
 
+(defun gitsum-git-command (git-command)
+  (shell-command ("git " git-command)))
+
+(defun gitsum-shell-command-to-string (command)
+  "Like shell-command-to-string but works on remote locations too."
+  (if (file-remote-p default-directory)
+      ;; The buffer created by with-temp-buffer pleasantly has the
+      ;; same default-directory as (current-buffer) as far as I can
+      ;; tell.  Thanks, with-temp-buffer.
+      (with-temp-buffer
+        (process-file-shell-command command nil t)
+        (buffer-string))
+    (shell-command-to-string command)))
+
+(defun gitsum-git-command-to-string (git-command)
+  (gitsum-shell-command-to-string
+   (concat "git " git-command
+           ;; Work around default stty oxtabs on OpenBSD.  (--no-pager
+           ;; doesn't cut it.)
+           (when (file-remote-p default-directory) " | cat"))))
+
+(defun gitsum-shell-command-on-region (start end command
+                                       &optional output-buffer)
+  "Like shell-command-on-region but works on remote locations too."
+  (if (file-remote-p default-directory)
+      (let ((temp-file-path nil)
+            (dir default-directory))
+        (unwind-protect
+             (progn
+               (setq temp-file-path (make-temp-file "gitsum"))
+               (write-region start end temp-file-path)
+               (with-current-buffer
+                   (get-buffer-create (or output-buffer "*Shell Command Output*"))
+                 (erase-buffer)
+                 (prog1
+                     (let ((default-directory dir))
+                       (process-file-shell-command command temp-file-path t))
+                   (unless (zerop (buffer-size))
+                     (display-message-or-buffer (current-buffer))))))
+          (when temp-file-path (delete-file temp-file-path))))
+    (shell-command-on-region start end command output-buffer)))
+
+(defun gitsum-git-command-on-region (start end git-command
+                                     &optional output-buffer)
+  (gitsum-shell-command-on-region
+   start end
+   (concat "git " git-command
+           ;; Work around default stty oxtabs on OpenBSD.  (--no-pager
+           ;; doesn't cut it.)
+           (when (file-remote-p default-directory) " | cat"))))
+
 ;; Undo doesn't work in read-only buffers else.
 (defun gitsum-undo ()
   "Undo some previous changes.
@@ -67,7 +118,7 @@ A numeric argument serves as a repeat count."
     (insert "# Directory:  " default-directory "\n")
     (insert "# Use n and p to navigate and k to kill a hunk.  u is undo, g will refresh.\n")
     (insert "# Edit the patch as you please and press 'c' to commit.\n\n")
-    (let ((diff (shell-command-to-string (concat "git diff " arguments))))
+    (let ((diff (gitsum-git-command-to-string (concat "diff " arguments))))
       (if (zerop (length diff))
           (insert "## No changes. ##")
         (insert diff)
@@ -95,11 +146,16 @@ A numeric argument serves as a repeat count."
 (defun gitsum-commit ()
   "Commit the patch as-is, asking for a commit message."
   (interactive)
-  (when (zerop (shell-command-on-region (point-min) (point-max)
-                                        "git apply --check --cached"))
+  (when (zerop (gitsum-git-command-on-region
+                (point-min) (point-max)
+                (concat "apply --check --cached")))
     (let ((buffer (get-buffer-create "*gitsum-commit*"))
           (dir default-directory))
-      (shell-command-on-region (point-min) (point-max) "(cat; git diff --cached) | git apply --stat" buffer)
+      (gitsum-shell-command-on-region
+       (point-min) (point-max)
+       (concat "(cat; git diff --cached)"
+               " | git --no-pager apply --stat")
+       buffer)
       (with-current-buffer buffer
         (setq default-directory dir)
         (goto-char (point-min))
@@ -115,12 +171,12 @@ A numeric argument serves as a repeat count."
 (defun gitsum-amend ()
   "Amend the last commit."
   (interactive)
-  (let ((last (substring (shell-command-to-string
-                          "git log -1 --pretty=oneline --abbrev-commit")
+  (let ((last (substring (gitsum-git-command-to-string
+                          "log -1 --pretty=oneline --abbrev-commit")
                          0 -1)))
     (when (y-or-n-p (concat "Are you sure you want to amend to " last "? "))
-      (shell-command-on-region (point-min) (point-max) "git apply --cached")
-      (shell-command "git commit --amend -C HEAD")
+      (gitsum-git-command-on-region (point-min) (point-max) "apply --cached")
+      (gitsum-git-command "commit --amend -C HEAD")
       (gitsum-refresh))))
 
 (defun gitsum-push ()
@@ -130,7 +186,7 @@ A numeric argument serves as a repeat count."
     (let ((buffer (get-buffer-create " *gitsum-push*")))
       (switch-to-buffer buffer)
       (insert "Running " args "...\n\n")
-      (start-process-shell-command "gitsum-push" buffer args))))
+      (start-file-process-shell-command "gitsum-push" buffer args))))
 
 (defun gitsum-revert ()
   "Revert the active patches in the working directory."
@@ -140,17 +196,16 @@ A numeric argument serves as a repeat count."
               (format "Are you sure you want to revert these %d hunk(s)? "
                       count)))
         (message "Revert canceled.")
-      (shell-command-on-region (point-min) (point-max) "git apply --reverse")
+      (gitsum-git-command-on-region (point-min) (point-max) "apply --reverse")
       (gitsum-refresh))))
 
 (defun gitsum-do-commit ()
   "Perform the actual commit using the current buffer as log message."
   (interactive)
   (with-current-buffer log-edit-parent-buffer
-    (shell-command-on-region (point-min) (point-max)
-                             "git apply --cached"))
-  (shell-command-on-region (point-min) (point-max)
-                           "git commit -F- --cleanup=strip")
+    (gitsum-git-command-on-region (point-min) (point-max) "apply --cached"))
+  (gitsum-git-command-on-region (point-min) (point-max)
+                                "commit -F- --cleanup=strip")
   (with-current-buffer log-edit-parent-buffer
     (gitsum-refresh)))
 
@@ -194,14 +249,13 @@ A numeric argument serves as a repeat count."
 
 (defun gitsum-get-top-dir ()
   "Get the top directory of your Git repository."
-  (with-temp-buffer
-    (unless (zerop (prog1
-                       (call-process "git" nil t nil "rev-parse" "--git-dir")
-                     (kill-backward-chars 1)))
-      (error (buffer-string)))
-    ;; --git-dir returns the absolute path to .git.  We want the
-    ;; directory above that (hopefully, maybe).
-    (expand-file-name ".." (buffer-string))))
+  (let* ((raw-git-dir (gitsum-git-command-to-string "rev-parse --git-dir"))
+         (git-dir
+          (replace-regexp-in-string "^[[:space:]\r\n]*\\|[[:space:]\r\n]*$" ""
+                                    raw-git-dir)))
+    ;; This command returns the path to .git.  We want the parent of
+    ;; that directory... hopefully.
+    (expand-file-name ".." git-dir)))
 
 ;;;###autoload
 (defun gitsum ()
