@@ -50,7 +50,7 @@ This mode is meant to be activated by `M-x gitsum' or pressing `s' in git-status
   (define-key git-status-mode-map "s" 'gitsum-switch-from-git-status))
 
 (defun gitsum-git-command (git-command)
-  (shell-command ("git " git-command)))
+  (shell-command ("git --no-pager " git-command)))
 
 (defun gitsum-shell-command-to-string (command)
   "Like shell-command-to-string but works on remote locations too."
@@ -65,10 +65,7 @@ This mode is meant to be activated by `M-x gitsum' or pressing `s' in git-status
 
 (defun gitsum-git-command-to-string (git-command)
   (gitsum-shell-command-to-string
-   (concat "git " git-command
-           ;; Work around default stty oxtabs on OpenBSD.  (--no-pager
-           ;; doesn't cut it.)
-           (when (file-remote-p default-directory) " | cat"))))
+   (concat "git --no-pager " git-command)))
 
 (defun gitsum-shell-command-on-region (start end command
                                        &optional output-buffer)
@@ -95,10 +92,7 @@ This mode is meant to be activated by `M-x gitsum' or pressing `s' in git-status
                                      &optional output-buffer)
   (gitsum-shell-command-on-region
    start end
-   (concat "git " git-command
-           ;; Work around default stty oxtabs on OpenBSD.  (--no-pager
-           ;; doesn't cut it.)
-           (when (file-remote-p default-directory) " | cat"))))
+   (concat "git --no-pager " git-command)))
 
 ;; Undo doesn't work in read-only buffers else.
 (defun gitsum-undo ()
