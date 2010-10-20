@@ -249,7 +249,8 @@ A numeric argument serves as a repeat count."
                                     raw-git-dir)))
     ;; This command returns the path to .git.  We want the parent of
     ;; that directory... hopefully.
-    (expand-file-name ".." git-dir)))
+    (concat (file-remote-p default-directory)
+            (expand-file-name ".." git-dir))))
 
 ;;;###autoload
 (defun gitsum ()
