@@ -116,8 +116,7 @@ A numeric argument serves as a repeat count."
       (if (zerop (length diff))
           (insert "## No changes. ##")
         (insert diff)
-        (goto-char (point-min))
-        (delete-matching-lines "^index \\|^diff --git ")))
+        (goto-char (point-min))))
     (set-buffer-modified-p nil)
     (goto-char (point-min))
     (forward-line 4)))
@@ -125,6 +124,10 @@ A numeric argument serves as a repeat count."
 (defun gitsum-kill-dwim ()
   "Kill the current hunk or file depending on point."
   (interactive)
+  (when (save-excursion
+          (beginning-of-line)
+          (looking-at-p "^\\(diff\\|index\\) "))
+    (diff-file-next))
   (let ((inhibit-read-only t))
     (if (looking-at "^---\\|^\\+\\+\\+")
         (diff-file-kill)
