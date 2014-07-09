@@ -133,6 +133,10 @@ A numeric argument serves as a repeat count."
           (beginning-of-line)
           (looking-at-p "^\\(---\\|\\+{3}\\) "))
         (diff-file-kill)
+      (when (> (car (diff-bounds-of-hunk)) (point))
+        ;; This should hopefully only be hit when you're in the part
+        ;; of the buffer before the first file.
+        (error "Not inside a file"))
       (diff-hunk-kill)
       (save-excursion
         (when (or (looking-at "^--- ")
