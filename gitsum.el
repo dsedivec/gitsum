@@ -129,7 +129,9 @@ A numeric argument serves as a repeat count."
           (looking-at-p "^\\(diff\\|index\\) "))
     (diff-file-next))
   (let ((inhibit-read-only t))
-    (if (looking-at "^---\\|^\\+\\+\\+")
+    (if (save-excursion
+          (beginning-of-line)
+          (looking-at-p "^\\(---\\|\\+{3}\\) "))
         (diff-file-kill)
       (diff-hunk-kill)
       (save-excursion
