@@ -131,7 +131,7 @@ A numeric argument serves as a repeat count."
   (let ((inhibit-read-only t))
     (if (save-excursion
           (beginning-of-line)
-          (looking-at-p "^\\(---\\|\\+{3}\\) "))
+          (looking-at-p "^\\(---\\|\\+\\+\\+\\) "))
         (diff-file-kill)
       (when (> (car (diff-bounds-of-hunk)) (point))
         ;; This should hopefully only be hit when you're in the part
